@@ -8,6 +8,7 @@ GEM
   specs:
     ast (2.3.0)
     diff-lcs (1.3)
+    fixture_tree (1.0.0)
     parallel (1.12.0)
     parser (2.4.0.0)
       ast (~> 2.2)
@@ -45,6 +46,7 @@ PLATFORMS
 DEPENDENCIES
   bundler (>= 1.15.3, < 3)
   cacache-rb!
+  fixture_tree (~> 1.0.0)
   rake (~> 12.0)
   rspec (~> 3.6)
   rubocop (~> 0.49.1)
