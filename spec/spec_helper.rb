@@ -2,6 +2,7 @@
 
 require "bundler/setup"
 require "cacache"
+require "json"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

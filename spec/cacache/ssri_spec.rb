@@ -184,7 +184,7 @@ RSpec.describe CACache::SSRI do
       invalid = %w[thisisbad -deadbeef sha512- -]
       valid = "sha512-#{sha}"
       expect(parse(invalid.+([valid]).join(" ")).to_h).to eq(
-        'sha512' => [
+        "sha512" => [
           CACache::SSRI::Hash.new(valid, "sha512", sha, []),
         ]
       )
@@ -193,7 +193,7 @@ RSpec.describe CACache::SSRI do
     it "strips whitespace" do
       sri = "         \t sha512-#{sha} \r\n "
       expect(parse(sri).to_h).to eq(
-        'sha512' => [
+        "sha512" => [
           CACache::SSRI::Hash.new(sri.strip, "sha512", sha, []),
         ]
       )
@@ -202,10 +202,10 @@ RSpec.describe CACache::SSRI do
     it "supports strict parsing" do
       valid = "sha512-#{sha}"
       bad_algorithm = "sha1-#{hash(test_data, :sha1)}"
-      bad_base64 = 'sha512-@#$@%#$'
+      bad_base64 = "sha512-@\#$@%\#$"
       bad_opts = "#{valid}?\x01\x02"
 
-      expect(parse([bad_algorithm, bad_base64, bad_opts, valid].join(" "), strict: true).to_s).
+      expect(parse([bad_algorithm, bad_base64, bad_opts, valid].join(" "), :strict => true).to_s).
         to eq valid
     end
   end

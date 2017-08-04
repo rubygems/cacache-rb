@@ -9,6 +9,8 @@ RSpec.describe CACache::Cache do
   let(:cache_path) { fixture_tree.path }
   let(:ssri) { CACache::SSRI }
 
+  after { FileUtils.rm_rf cache_path }
+
   subject(:cache) { described_class.new(cache_path) }
 
   def cache_content(entries = {})
@@ -17,6 +19,29 @@ RSpec.describe CACache::Cache do
       dir = acc
       cpath.dirname.descend {|v| dir = (dir[v.basename] ||= {}) }
       dir[cpath.basename] = content
+      acc
+    end
+    fixture_tree.merge tree
+  end
+
+  def cache_index(entries = {})
+    cache = described_class.new("")
+    tree = entries.reduce({}) do |acc, (k, content)|
+      cpath = cache.send(:bucket_path, k)
+      dir = acc
+      cpath.dirname.descend {|v| dir = (dir[v.basename] ||= {}) }
+      dir[cpath.basename] =
+        case content
+        when String
+          content
+        when Hash, Array
+          content = [content] if content.is_a?(Hash)
+          content.map do |e|
+            e[:path] ||= cache.send(:content_path, e[:integrity])
+            json = e.to_json
+            "#{cache.send(:hash_entry, json)}\t#{json}\n"
+          end.join
+        end
       acc
     end
     fixture_tree.merge tree
@@ -92,6 +117,32 @@ RSpec.describe CACache::Cache do
       data_path = cache.send(:content_path, integrity)
       data = File.read(data_path)
       expect(data).to eq content
+    end
+  end
+
+  describe "#ls" do
+    it "lists basic contents" do
+      contents = {
+        "whatever" => {
+          :key => "whatever",
+          :integrity => "sha512-deadbeef",
+          :time => 12_345,
+          :metadata => "omgsometa",
+          :size => 234_234,
+        },
+        "whatnot" => {
+          :key => "whatnot",
+          :integrity => "sha512-bada55e5",
+          :time => 54_321,
+          :metadata => nil,
+          :size => 425_345_345,
+        },
+      }
+      cache_index(contents)
+
+      expect(cache.ls).to eq Hash[contents.map {|k, e| [k, cache.send(:format_entry, e)] }]
+
+      expect {|b| cache.ls(&b) }.to yield_successive_args(*contents.values.map {|e| cache.send(:format_entry, e) })
     end
   end
 end

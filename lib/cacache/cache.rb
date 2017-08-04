@@ -63,7 +63,27 @@ module CACache
     end
     private :index_find
 
-    def ls; end
+    def ls(&blk)
+      acc = {} unless blk
+      bucket_dir.each_child do |bucket|
+        bucket.each_child do |sub_bucket|
+          sub_bucket.each_child do |file|
+            entries = bucket_entries(file).reverse_each.reduce({}) do |a, e|
+              a[e["key"]] ||= format_entry(e)
+              a
+            end
+
+            if acc
+              acc.merge!(entries)
+            else
+              entries.each_value {|v| yield(v) }
+            end
+          end
+        end
+      end
+
+      acc
+    end
 
     def get_data(by_digest, key, opts, &blk)
       entry = !by_digest && index_find(key)
