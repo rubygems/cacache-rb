@@ -66,5 +66,17 @@ module CACache
     def fix_tmpdir(cache_dir, opts)
       fix_owner(cache_dir.join("tmp"), opts[:uid], opts[:gid])
     end
+
+    def recurse_children(dir, depth = -1, &blk)
+      dir.each_child do |child|
+        if depth <= 0 || !child.directory?
+          yield child
+        else
+          recurse_children(child, depth - 1, &blk)
+        end
+      end
+    rescue Errno::ENOENT, Errno::ENOTDIR
+      nil
+    end
   end
 end

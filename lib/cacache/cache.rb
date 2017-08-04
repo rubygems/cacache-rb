@@ -65,20 +65,17 @@ module CACache
 
     def ls(&blk)
       acc = {} unless blk
-      bucket_dir.each_child do |bucket|
-        bucket.each_child do |sub_bucket|
-          sub_bucket.each_child do |file|
-            entries = bucket_entries(file).reverse_each.reduce({}) do |a, e|
-              a[e["key"]] ||= format_entry(e)
-              a
-            end
 
-            if acc
-              acc.merge!(entries)
-            else
-              entries.each_value {|v| yield(v) }
-            end
-          end
+      recurse_children(bucket_dir, 3) do |file|
+        entries = bucket_entries(file).reverse_each.reduce({}) do |a, e|
+          a[e["key"]] ||= format_entry(e)
+          a
+        end
+
+        if acc
+          acc.merge!(entries)
+        else
+          entries.each_value {|v| yield(v) }
         end
       end
 
@@ -212,6 +209,7 @@ module CACache
       data = File.read(bucket, :encoding => "UTF-8")
       data.each_line.map do |line|
         hash, entry = line.chomp.split("\t", 2)
+        next unless hash && entry
         next unless hash_entry(entry) == hash
         begin
           JSON.parse(entry)
@@ -248,7 +246,9 @@ module CACache
     end
 
     def hash(str, digest)
-      Digest(digest.upcase).hexdigest(str)
+      raise ArgumentError, "Cannot hash nil" if str.nil?
+      raise NoSuchDigestError, "No digest implementation for #{digest}" unless impl = Digest(digest.upcase)
+      impl.hexdigest(str)
     end
 
     def format_entry(entry)

@@ -14,44 +14,42 @@ RSpec.describe CACache::Cache do
   subject(:cache) { described_class.new(cache_path) }
 
   def cache_content(entries = {})
-    tree = entries.reduce({}) do |acc, (k, content)|
+    entries.reduce({}) do |acc, (k, content)|
       cpath = described_class.new("").send(:content_path, k)
       dir = acc
-      cpath.dirname.descend {|v| dir = (dir[v.basename] ||= {}) }
-      dir[cpath.basename] = content
+      cpath.dirname.descend {|v| dir = (dir[v.basename.to_s] ||= {}) }
+      dir[cpath.basename.to_s] = content
       acc
     end
-    fixture_tree.merge tree
   end
 
   def cache_index(entries = {})
     cache = described_class.new("")
-    tree = entries.reduce({}) do |acc, (k, content)|
+    entries.reduce({}) do |acc, (k, content)|
       cpath = cache.send(:bucket_path, k)
       dir = acc
-      cpath.dirname.descend {|v| dir = (dir[v.basename] ||= {}) }
-      dir[cpath.basename] =
+      cpath.dirname.descend {|v| dir = (dir[v.basename.to_s] ||= {}) }
+      dir[cpath.basename.to_s] =
         case content
         when String
           content
         when Hash, Array
           content = [content] if content.is_a?(Hash)
           content.map do |e|
-            e[:path] ||= cache.send(:content_path, e[:integrity])
             json = e.to_json
+            e[:path] ||= cache.send(:content_path, e[:integrity])
             "#{cache.send(:hash_entry, json)}\t#{json}\n"
           end.join
         end
       acc
     end
-    fixture_tree.merge tree
   end
 
   describe "#read" do
     it "returns the cache content data" do
       content = "foobarbaz"
       integrity = ssri.from_data(content)
-      cache_content integrity => content
+      fixture_tree.merge(cache_content(integrity => content))
       data = cache.send(:read, integrity, {})
       expect(data).to eq content
     end
@@ -59,7 +57,7 @@ RSpec.describe CACache::Cache do
 
   describe "#has_content" do
     it "returns { sri, size } when a cache file exists" do
-      cache_content "sha1-deadbeef" => ""
+      fixture_tree.merge(cache_content("sha1-deadbeef" => ""))
 
       content = cache.send(:has_content, "sha1-deadbeef")
       expect(content).to match(
@@ -80,7 +78,7 @@ RSpec.describe CACache::Cache do
 
   describe "#get" do
     it "gets data in bulk" do
-      cache_content integrity => content
+      fixture_tree.merge(cache_content(integrity => content))
       cache.send(:index_insert, key, integrity, opts)
 
       res = cache.get(key)
@@ -138,11 +136,59 @@ RSpec.describe CACache::Cache do
           :size => 425_345_345,
         },
       }
-      cache_index(contents)
+      fixture_tree.merge cache_index(contents)
 
       expect(cache.ls).to eq Hash[contents.map {|k, e| [k, cache.send(:format_entry, e)] }]
 
       expect {|b| cache.ls(&b) }.to yield_successive_args(*contents.values.map {|e| cache.send(:format_entry, e) })
+    end
+
+    it "handles separate keys in conflicting buckets" do
+      contents = {
+        "whatever" => {
+          :key => "whatever",
+          :integrity => "sha512-deadbeef",
+          :time => 12_345,
+          :metadata => "omgsometa",
+          :size => 5,
+        },
+        "whatev" => {
+          :key => "whatev",
+          :integrity => "sha512-bada55e5",
+          :time => 54_321,
+          :metadata => nil,
+          :size => 99_234_234,
+        },
+      }
+      fixture_tree.merge cache_index("whatever" => contents.values)
+
+      expect(cache.ls).to eq Hash[contents.map {|k, e| [k, cache.send(:format_entry, e)] }]
+    end
+
+    it "works on an empty cache" do
+      expect(cache.ls).to eq({})
+    end
+
+    it "ignores non-dir files" do
+      index = cache_index(
+        "whatever" => {
+          :key => "whatever",
+          :integrity => "sha512-deadbeef",
+          :time => 12_345,
+          :metadata => "omgsometa",
+          :size => 234_234,
+        }
+      )
+      index.each do |p, sd|
+        sd["garbage"] = "hello world #{p}" if sd.is_a?(Hash)
+      end
+      index["garbage"] = "hello world"
+
+      fixture_tree.merge(index)
+
+      ls = cache.ls
+      expect(ls.size).to eq 1
+      expect(ls["whatever"]).to have_attributes(:key => "whatever")
     end
   end
 end
