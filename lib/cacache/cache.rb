@@ -185,7 +185,11 @@ module CACache
       entry.integrity
     end
 
-    def rm_all; end
+    def rm_all
+      dirs = Dir[cache_path.join("*{content,index}-*")]
+      FileUtils.rm_rf dirs
+      nil
+    end
 
     def rm_entry(key); end
 

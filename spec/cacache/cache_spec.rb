@@ -118,6 +118,26 @@ RSpec.describe CACache::Cache do
     end
   end
 
+  describe "rm" do
+    let(:key) { "my-test-key" }
+    let(:content) { "foobarbaz" }
+    let(:integrity) { CACache::SSRI.from_data(content) }
+    let(:metadata) { { "foo" => "bar" } }
+
+    describe "#rm_all" do
+      it "deletes all content and index dirs" do
+        fixture_tree.merge(cache_content(integrity => content))
+        cache.send(:index_insert, key, integrity, :metadata => metadata)
+        cache_path.join("tmp").mkdir
+        cache_path.join("other.rb").open("w") {|f| f << "hi" }
+
+        expect(cache.rm_all).to be_nil
+
+        expect(cache_path.children(false).map(&:to_s)).to match_array %w[other.rb tmp]
+      end
+    end
+  end
+
   describe "#ls" do
     it "lists basic contents" do
       contents = {
