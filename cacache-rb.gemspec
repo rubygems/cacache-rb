@@ -21,8 +21,9 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 1.8.7"
 
   spec.add_development_dependency "bundler", ">= 1.15.3", "< 3"
+  spec.add_development_dependency "fixture_tree", "~> 1.0.0"
   spec.add_development_dependency "rake", "~> 12.0"
+  spec.add_development_dependency "rspec_junit_formatter", "~> 0.3.0"
   spec.add_development_dependency "rspec", "~> 3.6"
   spec.add_development_dependency "rubocop", "~> 0.49.1"
-  spec.add_development_dependency "fixture_tree", "~> 1.0.0"
 end
