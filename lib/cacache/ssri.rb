@@ -144,13 +144,32 @@ module CACache
       parse("#{algorithm}-#{[[digest].pack("H*")].pack("m0")}#{options_string}")
     end
 
-    def check(data, sri, opts = {})
+    def check!(data, sri, opts = {})
       sri = parse(sri, opts)
       return false if sri.empty?
+      if expected_size = opts[:size] and actual_size = data.size and expected_size != actual_size
+        raise ContentSizeMismatchError, "stream size mismatch when checking #{sri}.\n  Wanted: #{expected_size}\n  Found: #{actual_size}"
+      end
       algorithm = sri.pick_algorithm(opts)
       digests = sri[algorithm]
-      digest = Digest(algorithm.upcase).base64digest(data)
-      digests.find {|d| d.match? digest } || false
+      digest = Digest(algorithm.upcase).new
+      case data
+      when Pathname, IO
+        digest = digest.file(data)
+      else
+        digest = digest.update(data)
+      end
+      digest = digest.base64digest
+      unless match = digests.find {|d| d.match? digest }
+        raise IntegrityError, "#{sri} integrity checksum failed when using #{algorithm}: wanted #{sri} but got #{digest}. (#{actual_size} bytes)"
+      end
+      match
+    end
+
+    def check(data, sri, opts = {})
+      check!(data, sri, opts)
+    rescue ContentSizeMismatchError, IntegrityError
+      false
     end
   end
 end

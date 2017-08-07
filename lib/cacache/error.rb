@@ -6,4 +6,10 @@ module CACache
 
   class NoSuchDigestError < Error
   end
+
+  class ContentSizeMismatchError < Error
+  end
+
+  class IntegrityError < Error
+  end
 end

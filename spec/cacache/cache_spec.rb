@@ -247,4 +247,165 @@ RSpec.describe CACache::Cache do
       expect(ls["whatever"]).to have_attributes(:key => "whatever")
     end
   end
+
+  describe "#verify" do
+    let(:key) { "my-test-key" }
+    let(:content) { "foobarbaz" }
+    let(:integrity) { CACache::SSRI.from_data(content) }
+    let(:metadata) { { "foo" => "bar" } }
+    let(:bucket) { cache.bucket_path(key) }
+    let(:log) { [] }
+    let(:opts) { { log: proc {|msg| log << msg}} }
+
+    def mock_cache
+      fixture_tree.merge(cache_content integrity => content)
+      FileUtils.mkdir_p(cache_path.join("tmp"))
+      cache.index_insert(key, integrity, size: content.size, metadata: metadata)
+    end
+
+    it "removes corrupted index entries from buckets" do
+      mock_cache
+
+      bucket_data = File.read(bucket)
+      File.open(bucket, "a") {|f| f << "\n234uhhh" }
+
+      stats = cache.verify(opts)
+
+      expect(stats.without_times.to_s).to eq <<-EOS.strip
+CACache::VerificationStats
+---
+bad_content_count: 0
+kept_size: 9
+missing_content: 0
+reclaimed_count: 0
+reclaimed_size: 0
+rejected_entries: 0
+total_entries: 1
+verified_content: 1
+      EOS
+
+      new_bucket_data = File.read(bucket)
+
+      bucket_entry = JSON.parse(new_bucket_data.split("\t")[1])
+      target_entry = JSON.parse(bucket_data.split("\t")[1])
+
+      target_entry["time"] = bucket_entry["time"]
+
+      expect(bucket_entry).to eq(target_entry), "bucket only contains good entry"
+    end
+
+    it "removes shadowed index entries from buckets" do
+      mock_cache
+      new_entry = cache.index_insert(key, integrity, size: 109, metadata: 'meh')
+
+      expect(cache.verify.without_times.to_s).to eq <<-EOS.strip
+CACache::VerificationStats
+---
+bad_content_count: 0
+kept_size: 9
+missing_content: 0
+reclaimed_count: 0
+reclaimed_size: 0
+rejected_entries: 0
+total_entries: 1
+verified_content: 1
+      EOS
+
+      bucket_data = bucket.read
+      entry_json = JSON.dump(key: new_entry.key, integrity: new_entry.integrity.to_s, time: bucket_data.match(/"time":(\d+)/)[1].to_i, size: content.size, metadata: new_entry.metadata)
+      expect(bucket_data).to eq "#{cache.hash_entry(entry_json)}\t#{entry_json}\n"
+    end
+
+    it "accepts a function for filtering of index entries" do
+      key2 = key + 'aaa'
+      key3 = key + 'bbb'
+      mock_cache
+      new_entries = {
+        key2 => cache.index_insert(key2, integrity, metadata: 'hi'),
+        key3 => cache.index_insert(key3, integrity, metadata: 'hi again'),
+      }
+      stats = cache.verify(filter: proc {|entry| entry.key.length == key2.length })
+
+      expect(stats.without_times.to_s).to eq <<-EOS.strip
+CACache::VerificationStats
+---
+bad_content_count: 0
+kept_size: #{content.size}
+missing_content: 0
+reclaimed_count: 0
+reclaimed_size: 0
+rejected_entries: 1
+total_entries: 2
+verified_content: 1
+      EOS
+    end
+
+    it "removes corrupted content" do
+      content_path = cache.content_path(integrity)
+      mock_cache
+      content_path.open("w") {|f| f << content[0..-2] }
+
+      stats = cache.verify
+      expect(content_path).not_to be_file
+      expect(stats.without_times.to_s).to eq <<-EOS.strip
+CACache::VerificationStats
+---
+bad_content_count: 1
+kept_size: 0
+missing_content: 1
+reclaimed_count: 1
+reclaimed_size: #{content.size - 1}
+rejected_entries: 1
+total_entries: 0
+verified_content: 0
+      EOS
+
+    end
+
+    it "removes content not referenced by any entries" do
+      fixture_tree.merge(cache_content integrity => content)
+
+      expect(cache.verify.without_times.to_s).to eq <<-EOS.strip
+CACache::VerificationStats
+---
+bad_content_count: 0
+kept_size: 0
+missing_content: 0
+reclaimed_count: 1
+reclaimed_size: #{content.size}
+rejected_entries: 0
+total_entries: 0
+verified_content: 0
+      EOS
+
+      expect(cache.content_path(integrity)).not_to be_file
+    end
+
+    it "cleans up the contents of the tmp dir" do
+      tmp_file = cache_path.join("tmp", "x")
+      misc_file = cache_path.join("y")
+
+      mock_cache
+
+      tmp_file.parent.mkpath
+      tmp_file.open("w") {|f| f << '' }
+      misc_file.open("w") {|f| f << '' }
+
+      cache.verify
+
+      expect { tmp_file.stat }.to raise_error(Errno::ENOENT)
+      expect(misc_file.stat).not_to be_nil
+    end
+
+    it "writes a file with the last verification time" do
+      expect(cache.verify_last_run).to be_nil
+
+      cache.verify
+
+      from_last_run = cache.verify_last_run
+      data = cache_path.join("_lastverified").open("r:utf-8", &:read)
+      from_file = Time.at(data.to_i)
+      expect(from_last_run).to eq(from_file)
+    end
+  end
 end

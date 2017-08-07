@@ -210,9 +210,187 @@ module CACache
 
     # Integrity
 
-    def verify(opts); end
+    def verify_mark_start_time(opts)
+      { start_time: Time.now }
+    end
+    private :verify_mark_start_time
 
-    def verify_last_run; end
+    def verify_fix_permissions(opts)
+      opts[:log].call("fixing cache permissions")
+      fix_owner_mkdir_fix(cache_path, opts[:uid], opts[:gid])
+      fix_owner(cache_path, opts[:uid], opts[:gid])
+      nil
+    end
+    private :verify_fix_permissions
+
+    def verify_content(path, sri)
+      stat = path.stat
+      valid = begin
+        !!SSRI.check!(path, sri)
+      rescue IntegrityError
+        FileUtils.rm_rf path
+        false
+      end
+      {
+        size: stat.size,
+        valid: valid,
+      }
+    rescue Errno::ENOENT
+      {
+        size: 0,
+        valid: false,
+      }
+    end
+    private :verify_content
+    
+    def verify_garbage_collect(opts)
+      opts[:log].call("garbage-collecting content")
+      filter = opts[:filter]
+      live_content = Set.new
+      ls do |entry|
+        next if filter && !filter.call(entry)
+        live_content << entry.integrity.to_s
+      end
+      stats = {
+        verified_content: 0,
+        reclaimed_count: 0,
+        reclaimed_size: 0,
+        bad_content_count: 0,
+        kept_size: 0
+      }
+      Pathname.glob(content_dir.join('**/*')).each do |f|
+        next if f.directory?
+        split = f.to_s.split File::SEPARATOR
+        digest = split[-3, 3].join
+        algo = split[-4]
+        integrity = SSRI.from_hex(digest, algo)
+        if live_content.include?(integrity.to_s)
+          info = verify_content(f, integrity)
+          if !info[:valid]
+            stats[:reclaimed_count] += 1
+            stats[:bad_content_count] += 1
+            stats[:reclaimed_size] += info[:size]
+          else
+            stats[:verified_content] += 1
+            stats[:kept_size] += info[:size]
+          end
+        else
+          stats[:reclaimed_count] += 1
+          size = f.size
+          FileUtils.rm_rf f
+          stats[:reclaimed_size] += size
+        end
+      end
+      stats
+    end
+    private :verify_garbage_collect
+
+    class RebuildIndexBucket
+      attr_reader :entries, :path
+      def initialize(path)
+        @entries = []
+        @path = path
+      end
+    end
+    private_constant :RebuildIndexBucket
+
+    def verify_rebuild_bucket(bucket, stats, opts)
+      File.truncate(bucket.path, 0)
+      bucket.entries.each do |entry|
+        begin
+          content = content_path(entry.integrity)
+          size = content.stat.size
+          index_insert(entry.key, entry.integrity, opts.merge(size: size, metadata: entry.metadata))
+          stats[:total_entries] += 1
+        rescue Errno::ENOENT
+          stats[:rejected_entries] += 1
+          stats[:missing_content] += 1
+        end
+      end
+    end
+    private :verify_rebuild_bucket
+
+    def verify_rebuild_index(opts)
+      opts[:log].call('rebuilding index')
+      entries = ls
+      stats = { missing_content: 0, rejected_entries: 0, total_entries: 0 }
+      buckets = {}
+      entries.each do |k, entry|
+        hashed = hash_key(k)
+        excluded = opts[:filter] && !opts[:filter].call(entry)
+        stats[:rejected_entries] += 1 if excluded
+        if !excluded && buckets[hashed]
+          buckets[hashed].entries << entry
+        elsif excluded && buckets[hashed]
+          nil
+        else
+          bucket = buckets[hashed] = RebuildIndexBucket.new(bucket_path(k))
+          bucket.entries << entry unless excluded
+        end
+      end
+      buckets.each do |key, bucket|
+        verify_rebuild_bucket(bucket, stats, opts)
+      end
+      stats
+    end
+    private :verify_rebuild_index
+
+    def verify_clean_tmp(opts)
+      opts[:log].call("cleaning tmp directory")
+      FileUtils.rm_rf cache_path.join("tmp")
+      nil
+    end
+    private :verify_clean_tmp
+
+    def verify_write_verifile(opts)
+      verifile = cache_path.join("_lastverified")
+      opts[:log].call("writing verifile to #{verifile}")
+      verifile.open("w") {|f| f << "#{Time.now.to_i}" }
+      nil
+    end
+    private :verify_write_verifile
+
+    def verify_mark_end_time(opts)
+      { end_time: Time.now }
+    end
+    private :verify_mark_end_time
+
+    def verify(opts = {})
+      log = opts[:log] ||= proc {}
+      log.call("verifying cache at #{cache_path}")
+      [
+        proc { verify_mark_start_time(opts) },
+        proc { verify_fix_permissions(opts) },
+        proc { verify_garbage_collect(opts) },
+        proc { verify_rebuild_index(opts) },
+        proc { verify_clean_tmp(opts) },
+        proc { verify_write_verifile(opts) },
+        proc { verify_mark_end_time(opts) },
+      ].each_with_index.reduce(VerificationStats.new) do |stats, (step, i)|
+        label = "step #{i}"
+        start = Time.new
+
+        if s = step.call(opts)
+          s.each {|k, v| stats[k] = v }
+        end
+        end_time = Time.new
+
+        stats.run_time ||= {}
+        stats.run_time[label] = end_time - start
+
+        stats
+      end.tap do |stats|
+        stats.run_time[:total] = stats.end_time - stats.start_time
+        log.call("verification finished for #{cache_path} in #{stats.run_time[:total]}ms")
+      end
+    end
+
+    def verify_last_run
+      verifile = cache_path.join("_lastverified")
+      return unless verifile.file?
+      data = verifile.read(encoding: "utf-8")
+      Time.at(data.to_i)
+    end
 
   private
 
