@@ -148,7 +148,7 @@ RSpec.describe CACache::Cache do
 
     describe "#rm_entry" do
       it "removes the entry and not the content" do
-        fixture_tree.merge(cache_content integrity => content)
+        fixture_tree.merge(cache_content(integrity => content))
         cache.index_insert(key, integrity, :metadata => metadata)
 
         cache.rm_entry(key)
@@ -161,7 +161,7 @@ RSpec.describe CACache::Cache do
 
     describe "#rm_content" do
       it "removes the content and not the index entry" do
-        fixture_tree.merge(cache_content integrity => content)
+        fixture_tree.merge(cache_content(integrity => content))
         cache.index_insert(key, integrity, :metadata => metadata)
 
         expect(cache.rm_content("sha512-bm8gY29udGVudA==")).to be false
@@ -255,12 +255,12 @@ RSpec.describe CACache::Cache do
     let(:metadata) { { "foo" => "bar" } }
     let(:bucket) { cache.bucket_path(key) }
     let(:log) { [] }
-    let(:opts) { { log: proc {|msg| log << msg}} }
+    let(:opts) { { :log => proc {|msg| log << msg } } }
 
     def mock_cache
-      fixture_tree.merge(cache_content integrity => content)
+      fixture_tree.merge(cache_content(integrity => content))
       FileUtils.mkdir_p(cache_path.join("tmp"))
-      cache.index_insert(key, integrity, size: content.size, metadata: metadata)
+      cache.index_insert(key, integrity, :size => content.size, :metadata => metadata)
     end
 
     it "removes corrupted index entries from buckets" do
@@ -296,7 +296,7 @@ verified_content: 1
 
     it "removes shadowed index entries from buckets" do
       mock_cache
-      new_entry = cache.index_insert(key, integrity, size: 109, metadata: 'meh')
+      new_entry = cache.index_insert(key, integrity, :size => 109, :metadata => "meh")
 
       expect(cache.verify.without_times.to_s).to eq <<-EOS.strip
 CACache::VerificationStats
@@ -312,19 +312,23 @@ verified_content: 1
       EOS
 
       bucket_data = bucket.read
-      entry_json = JSON.dump(key: new_entry.key, integrity: new_entry.integrity.to_s, time: bucket_data.match(/"time":(\d+)/)[1].to_i, size: content.size, metadata: new_entry.metadata)
+      entry_json = JSON.dump(:key => new_entry.key,
+                             :integrity => new_entry.integrity.to_s,
+                             :time => bucket_data.match(/"time":(\d+)/)[1].to_i,
+                             :size => content.size,
+                             :metadata => new_entry.metadata)
       expect(bucket_data).to eq "#{cache.hash_entry(entry_json)}\t#{entry_json}\n"
     end
 
     it "accepts a function for filtering of index entries" do
-      key2 = key + 'aaa'
-      key3 = key + 'bbb'
+      key2 = key + "aaa"
+      key3 = key + "bbb"
       mock_cache
       new_entries = {
-        key2 => cache.index_insert(key2, integrity, metadata: 'hi'),
-        key3 => cache.index_insert(key3, integrity, metadata: 'hi again'),
+        key2 => cache.index_insert(key2, integrity, :size => content.size, :metadata => "hi"),
+        key3 => cache.index_insert(key3, integrity, :size => content.size, :metadata => "hi again"),
       }
-      stats = cache.verify(filter: proc {|entry| entry.key.length == key2.length })
+      stats = cache.verify(:filter => proc {|entry| entry.key.length == key2.length })
 
       expect(stats.without_times.to_s).to eq <<-EOS.strip
 CACache::VerificationStats
@@ -338,6 +342,11 @@ rejected_entries: 1
 total_entries: 2
 verified_content: 1
       EOS
+
+      entries = cache.ls
+      entries[key2].time = new_entries[key2].time
+      entries[key3].time = new_entries[key3].time
+      expect(new_entries).to eq entries
     end
 
     it "removes corrupted content" do
@@ -359,11 +368,10 @@ rejected_entries: 1
 total_entries: 0
 verified_content: 0
       EOS
-
     end
 
     it "removes content not referenced by any entries" do
-      fixture_tree.merge(cache_content integrity => content)
+      fixture_tree.merge(cache_content(integrity => content))
 
       expect(cache.verify.without_times.to_s).to eq <<-EOS.strip
 CACache::VerificationStats
@@ -388,8 +396,8 @@ verified_content: 0
       mock_cache
 
       tmp_file.parent.mkpath
-      tmp_file.open("w") {|f| f << '' }
-      misc_file.open("w") {|f| f << '' }
+      tmp_file.open("w") {|f| f << "" }
+      misc_file.open("w") {|f| f << "" }
 
       cache.verify
 

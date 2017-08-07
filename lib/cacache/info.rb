@@ -8,5 +8,9 @@ module CACache
     :time,
     :size,
     :metadata
-  )
+  ) do
+    def to_json(*opts)
+      to_h.to_json(*opts)
+    end
+  end
 end

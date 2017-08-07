@@ -211,7 +211,7 @@ module CACache
     # Integrity
 
     def verify_mark_start_time(opts)
-      { start_time: Time.now }
+      { :start_time => Time.now }
     end
     private :verify_mark_start_time
 
@@ -226,23 +226,24 @@ module CACache
     def verify_content(path, sri)
       stat = path.stat
       valid = begin
-        !!SSRI.check!(path, sri)
+        SSRI.check!(path, sri)
+        true
       rescue IntegrityError
         FileUtils.rm_rf path
         false
       end
       {
-        size: stat.size,
-        valid: valid,
+        :size => stat.size,
+        :valid => valid,
       }
     rescue Errno::ENOENT
       {
-        size: 0,
-        valid: false,
+        :size => 0,
+        :valid => false,
       }
     end
     private :verify_content
-    
+
     def verify_garbage_collect(opts)
       opts[:log].call("garbage-collecting content")
       filter = opts[:filter]
@@ -252,13 +253,13 @@ module CACache
         live_content << entry.integrity.to_s
       end
       stats = {
-        verified_content: 0,
-        reclaimed_count: 0,
-        reclaimed_size: 0,
-        bad_content_count: 0,
-        kept_size: 0
+        :verified_content => 0,
+        :reclaimed_count => 0,
+        :reclaimed_size => 0,
+        :bad_content_count => 0,
+        :kept_size => 0,
       }
-      Pathname.glob(content_dir.join('**/*')).each do |f|
+      Pathname.glob(content_dir.join("**/*")).each do |f|
         next if f.directory?
         split = f.to_s.split File::SEPARATOR
         digest = split[-3, 3].join
@@ -285,6 +286,7 @@ module CACache
     end
     private :verify_garbage_collect
 
+    # @private
     class RebuildIndexBucket
       attr_reader :entries, :path
       def initialize(path)
@@ -300,7 +302,7 @@ module CACache
         begin
           content = content_path(entry.integrity)
           size = content.stat.size
-          index_insert(entry.key, entry.integrity, opts.merge(size: size, metadata: entry.metadata))
+          index_insert(entry.key, entry.integrity, opts.merge(:size => size, :metadata => entry.metadata))
           stats[:total_entries] += 1
         rescue Errno::ENOENT
           stats[:rejected_entries] += 1
@@ -311,9 +313,9 @@ module CACache
     private :verify_rebuild_bucket
 
     def verify_rebuild_index(opts)
-      opts[:log].call('rebuilding index')
+      opts[:log].call("rebuilding index")
       entries = ls
-      stats = { missing_content: 0, rejected_entries: 0, total_entries: 0 }
+      stats = { :missing_content => 0, :rejected_entries => 0, :total_entries => 0 }
       buckets = {}
       entries.each do |k, entry|
         hashed = hash_key(k)
@@ -328,7 +330,7 @@ module CACache
           bucket.entries << entry unless excluded
         end
       end
-      buckets.each do |key, bucket|
+      buckets.each do |_key, bucket|
         verify_rebuild_bucket(bucket, stats, opts)
       end
       stats
@@ -345,13 +347,13 @@ module CACache
     def verify_write_verifile(opts)
       verifile = cache_path.join("_lastverified")
       opts[:log].call("writing verifile to #{verifile}")
-      verifile.open("w") {|f| f << "#{Time.now.to_i}" }
+      verifile.open("w") {|f| f << Time.now.to_i.to_s }
       nil
     end
     private :verify_write_verifile
 
     def verify_mark_end_time(opts)
-      { end_time: Time.now }
+      { :end_time => Time.now }
     end
     private :verify_mark_end_time
 
@@ -388,7 +390,7 @@ module CACache
     def verify_last_run
       verifile = cache_path.join("_lastverified")
       return unless verifile.file?
-      data = verifile.read(encoding: "utf-8")
+      data = verifile.read(:encoding => "utf-8")
       Time.at(data.to_i)
     end
 

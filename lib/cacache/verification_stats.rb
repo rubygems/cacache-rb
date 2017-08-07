@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CACache
   VerificationStats = Struct.new(
     :verified_content,
@@ -11,14 +13,14 @@ module CACache
     :start_time,
     :end_time,
     :run_time
-  )
-  class VerificationStats
+  ) do
+
     def without_times
       self.class.new(*to_a[0..-4])
     end
 
     def to_s
-      "#{self.class}\n---\n" + 
+      "#{self.class}\n---\n" +
         to_h.map {|k, v| "#{k}: #{v}".strip unless v.nil? }.compact.sort.join("\n")
     end
   end
