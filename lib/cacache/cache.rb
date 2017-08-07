@@ -25,19 +25,6 @@ module CACache
     end
     private :read
 
-    def has_content(integrity)
-      return false unless integrity
-      content = pick_content_sri(integrity)
-      return false unless sri = content[:sri]
-      {
-        :sri => sri,
-        :size => content[:stat].size,
-      }
-    rescue Errno::ENOENT, Errno::EPERM
-      false
-    end
-    private :has_content
-
     def pick_content_sri(integrity)
       sri = SSRI.parse(integrity)
       algo = sri.pick_algorithm
@@ -122,7 +109,17 @@ module CACache
       index_find(key)
     end
 
-    def get_has_content(integrity); end
+    def has_content(integrity)
+      return false unless integrity
+      content = pick_content_sri(integrity)
+      return false unless sri = content[:sri]
+      {
+        :sri => sri,
+        :size => content[:stat].size,
+      }
+    rescue Errno::ENOENT, Errno::EPERM
+      false
+    end
 
     # Writing
 
@@ -201,12 +198,6 @@ module CACache
       FileUtils.rm_rf content_path(sri)
       true
     end
-
-    # Utilities
-
-    def clear_memoized; end
-
-    def tmp_mkdir(opts); end
 
     # Integrity
 
