@@ -191,9 +191,16 @@ module CACache
       nil
     end
 
-    def rm_entry(key); end
+    def rm_entry(key, opts = {})
+      index_insert(key, nil, opts)
+    end
 
-    def rm_content(integrity); end
+    def rm_content(integrity)
+      return false unless content = has_content(integrity)
+      return false unless sri = content[:sri]
+      FileUtils.rm_rf content_path(sri)
+      true
+    end
 
     # Utilities
 

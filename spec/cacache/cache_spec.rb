@@ -145,6 +145,33 @@ RSpec.describe CACache::Cache do
         expect(cache_path.children(false).map(&:to_s)).to match_array %w[other.rb tmp]
       end
     end
+
+    describe "#rm_entry" do
+      it "removes the entry and not the content" do
+        fixture_tree.merge(cache_content integrity => content)
+        cache.index_insert(key, integrity, :metadata => metadata)
+
+        cache.rm_entry(key)
+
+        expect { cache.get(key) }.to raise_error(Errno::ENOENT, /no entry for #{key}/)
+        expect(File.read(cache.content_path(integrity))).
+          to eq(content), "content should remain in the cache"
+      end
+    end
+
+    describe "#rm_content" do
+      it "removes the content and not the index entry" do
+        fixture_tree.merge(cache_content integrity => content)
+        cache.index_insert(key, integrity, :metadata => metadata)
+
+        expect(cache.rm_content("sha512-bm8gY29udGVudA==")).to be false
+
+        expect(cache.rm_content(integrity)).to be true
+        expect { cache.get(key) }.to raise_error(Errno::ENOENT)
+        content_path = cache.content_path(integrity)
+        expect(content_path).not_to be_file
+      end
+    end
   end
 
   describe "#ls" do
