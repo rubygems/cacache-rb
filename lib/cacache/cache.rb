@@ -285,7 +285,7 @@ module CACache
         @path = path
       end
     end
-    private_constant :RebuildIndexBucket
+    private_constant :RebuildIndexBucket if respond_to?(:private_constant)
 
     def verify_rebuild_bucket(bucket, stats, opts)
       File.truncate(bucket.path, 0)

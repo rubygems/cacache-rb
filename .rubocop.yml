@@ -1,2 +1,9 @@
 inherit_from:
 - .rubocop_bundler.yml
+
+AllCops:
+  TargetRubyVersion: 1.9
+  Exclude:
+    - .bundle/**/*
+    - vendor/**/*
+  DisplayCopNames: true
