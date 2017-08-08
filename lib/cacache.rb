@@ -2,6 +2,7 @@
 
 # A content-addressable FS cache
 module CACache
+  require "cacache/json"
   require "cacache/info"
   require "cacache/error"
   require "cacache/util"

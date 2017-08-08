@@ -9,6 +9,8 @@ gemspec
 
 gem "fixture_tree", :github => "segiddins/fixture_tree", :branch => "seg-pathname-write"
 
+gem "json", "< 2"
+
 install_if RUBY_VERSION >= "2.0" do
   gem "rubocop", "~> 0.49.1"
 end

@@ -127,8 +127,7 @@ module CACache
       bucket = bucket_path(key)
       entry = Info.new(key, integrity && integrity.to_s, nil, Time.now.to_i, opts[:size], opts[:metadata])
       fix_owner_mkdir_fix(bucket.dirname, opts[:uid], opts[:gid])
-      require "json"
-      entry_json = entry.to_h.tap {|h| h.delete(:path) }.to_json
+      entry_json = JSON.dump(entry.to_h.tap {|h| h.delete(:path) })
       File.open(bucket, "a") {|f| f << "#{hash_entry(entry_json)}\t#{entry_json}\n" }
       begin
         fix_owner(bucket, opts[:uid], opts[:gid])
